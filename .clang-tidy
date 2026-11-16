@@ -1,0 +1,12 @@
+Checks: >
+  -*,
+  bugprone-*,
+  cppcoreguidelines-owning-memory,
+  cppcoreguidelines-special-member-functions,
+  modernize-use-nullptr,
+  modernize-use-override,
+  performance-*,
+  readability-braces-around-statements
+WarningsAsErrors: ''
+HeaderFilterRegex: 'include/.*'
+FormatStyle: file
