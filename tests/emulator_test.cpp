@@ -155,7 +155,9 @@ TEST_CASE("8XY6 and 8XYE shift VX in place") {
 
 TEST_CASE("DXYN draws, reports collision, and erases") {
   Emulator emulator;
-  // Five opcodes (10 bytes) put the sprite at 0x20A: one row with bits 0 and 7.
+  // The five opcodes occupy 0x200..0x209 and set I = 0x20A. The two appended
+  // bytes are sprite data, never fetched as opcodes: 0x81 is one row with bits
+  // 0 and 7, and 0x00 pads the second byte since DXYN reads only one row.
   auto rom = encode({0xA20A, 0x6000, 0x6100, 0xD011, 0xD011});
   rom.push_back(0x81);
   rom.push_back(0x00);

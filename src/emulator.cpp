@@ -353,8 +353,8 @@ std::uint16_t Emulator::pop() {
 }
 
 void Emulator::draw_sprite(std::uint8_t origin_x, std::uint8_t origin_y, std::uint8_t rows) {
-  const auto start_x = static_cast<int>(origin_x % static_cast<std::uint8_t>(kDisplayWidth));
-  const auto start_y = static_cast<int>(origin_y % static_cast<std::uint8_t>(kDisplayHeight));
+  const int start_x = static_cast<int>(origin_x) % kDisplayWidth;
+  const int start_y = static_cast<int>(origin_y) % kDisplayHeight;
   v_[0x0F] = 0;
 
   for (std::uint8_t row = 0; row < rows; ++row) {
