@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    name: ${{ matrix.preset }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        preset: [dev, asan]
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Configure (${{ matrix.preset }})
+        run: cmake --preset ${{ matrix.preset }}
+
+      - name: Build (${{ matrix.preset }})
+        run: cmake --build --preset ${{ matrix.preset }} -j
+
+      - name: Test (${{ matrix.preset }})
+        run: ctest --preset ${{ matrix.preset }} --output-on-failure
+
+  tsan:
+    name: tsan
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+
+      - name: Configure (tsan)
+        run: cmake --preset tsan
+
+      - name: Build (tsan)
+        run: cmake --build --preset tsan -j
+
+      # TSan aborts with "unexpected memory mapping" when the kernel uses high
+      # ASLR entropy (vm.mmap_rnd_bits >= 32). Disable ASLR for the test run,
+      # as documented in README.md.
+      - name: Test (tsan, ASLR disabled)
+        run: setarch "$(uname -m)" -R ctest --preset tsan --output-on-failure
