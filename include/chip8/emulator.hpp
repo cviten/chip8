@@ -80,6 +80,8 @@ public:
 
 private:
   std::uint16_t fetch_opcode() const;
+  std::uint8_t read_memory(std::uint32_t address) const;
+  void write_memory(std::uint32_t address, std::uint8_t value);
   void execute(std::uint16_t opcode);
 
   void push(std::uint16_t value);

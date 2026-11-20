@@ -4,8 +4,8 @@ A headless CHIP-8 interpreter in C++17, with a doctest suite and a sanitizer
 preset. The core executes instructions and owns the framebuffer; it has no
 window, no audio device, and no clock.
 
-**Status:** the base CHIP-8 instruction set is implemented and tested (18 cases,
-90 assertions). There is no front end yet, so nothing draws a window.
+**Status:** the base CHIP-8 instruction set is implemented and tested (24 cases,
+115 assertions). There is no front end yet, so nothing draws a window.
 
 ## Build
 
@@ -52,13 +52,15 @@ third_party/doctest/         vendored single-header doctest 2.4.9
 
 ## Design
 
-Two decisions shape everything; read them before changing the core:
+Three decisions shape everything; read them before changing the core:
 
 - [`0001-opcode-semantics.md`](docs/adr/0001-opcode-semantics.md) — where the
   reference interpreters disagree, this project follows the original one.
   `8XY6`/`8XYE` shift `VX`, `FX55`/`FX65` leave `I` alone, `DXYN` wraps.
 - [`0002-headless-core.md`](docs/adr/0002-headless-core.md) — the core never
   sleeps, never reads a clock, never allocates in `step()`.
+- [`0003-memory-address-wrapping.md`](docs/adr/0003-memory-address-wrapping.md)
+  — `I` and `PC` are 12-bit; every emulated memory access wraps modulo 4096.
 
 The intended front-end loop:
 

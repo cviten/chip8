@@ -29,6 +29,11 @@ constexpr std::array<std::uint8_t, 80> kFontSet = {
 constexpr std::size_t kFontGlyphBytes = 5;
 constexpr std::uint32_t kInitialSeed = 0x5EEDU;
 
+// Emulated memory is a 12-bit address space; every access wraps at 4096.
+constexpr std::uint16_t wrap_address(std::uint32_t address) {
+  return static_cast<std::uint16_t>(address % static_cast<std::uint32_t>(kMemorySize));
+}
+
 } // namespace
 
 Emulator::Emulator() {
@@ -79,9 +84,18 @@ std::uint8_t Emulator::peek(std::uint16_t address) const {
 }
 
 std::uint16_t Emulator::fetch_opcode() const {
-  const auto high = static_cast<std::uint16_t>(peek(pc_)) << 8U;
-  const auto low = static_cast<std::uint16_t>(peek(static_cast<std::uint16_t>(pc_ + 1U)));
+  const auto address = static_cast<std::uint32_t>(pc_);
+  const auto high = static_cast<std::uint16_t>(read_memory(address)) << 8U;
+  const auto low = static_cast<std::uint16_t>(read_memory(address + 1U));
   return static_cast<std::uint16_t>(high | low);
+}
+
+std::uint8_t Emulator::read_memory(std::uint32_t address) const {
+  return memory_[wrap_address(address)];
+}
+
+void Emulator::write_memory(std::uint32_t address, std::uint8_t value) {
+  memory_[wrap_address(address)] = value;
 }
 
 void Emulator::step() {
@@ -90,7 +104,7 @@ void Emulator::step() {
   }
 
   const std::uint16_t opcode = fetch_opcode();
-  pc_ = static_cast<std::uint16_t>(pc_ + 2U);
+  pc_ = wrap_address(static_cast<std::uint32_t>(pc_) + 2U);
   ++cycles_;
   execute(opcode);
 }
@@ -134,13 +148,13 @@ void Emulator::execute(std::uint16_t opcode) {
 
   case 0x3000:
     if (v_[x] == nn) {
-      pc_ = static_cast<std::uint16_t>(pc_ + 2U);
+      pc_ = wrap_address(static_cast<std::uint32_t>(pc_) + 2U);
     }
     break;
 
   case 0x4000:
     if (v_[x] != nn) {
-      pc_ = static_cast<std::uint16_t>(pc_ + 2U);
+      pc_ = wrap_address(static_cast<std::uint32_t>(pc_) + 2U);
     }
     break;
 
@@ -148,7 +162,7 @@ void Emulator::execute(std::uint16_t opcode) {
     if (n != 0) {
       ++unsupported_opcodes_;
     } else if (v_[x] == v_[y]) {
-      pc_ = static_cast<std::uint16_t>(pc_ + 2U);
+      pc_ = wrap_address(static_cast<std::uint32_t>(pc_) + 2U);
     }
     break;
 
@@ -213,7 +227,7 @@ void Emulator::execute(std::uint16_t opcode) {
     if (n != 0) {
       ++unsupported_opcodes_;
     } else if (v_[x] != v_[y]) {
-      pc_ = static_cast<std::uint16_t>(pc_ + 2U);
+      pc_ = wrap_address(static_cast<std::uint32_t>(pc_) + 2U);
     }
     break;
 
@@ -222,7 +236,7 @@ void Emulator::execute(std::uint16_t opcode) {
     break;
 
   case 0xB000:
-    pc_ = static_cast<std::uint16_t>(nnn + v_[0]);
+    pc_ = wrap_address(static_cast<std::uint32_t>(nnn) + static_cast<std::uint32_t>(v_[0]));
     break;
 
   case 0xC000:
@@ -236,11 +250,11 @@ void Emulator::execute(std::uint16_t opcode) {
   case 0xE000:
     if (nn == 0x9E) {
       if (keys_[v_[x] & 0x0FU]) {
-        pc_ = static_cast<std::uint16_t>(pc_ + 2U);
+        pc_ = wrap_address(static_cast<std::uint32_t>(pc_) + 2U);
       }
     } else if (nn == 0xA1) {
       if (!keys_[v_[x] & 0x0FU]) {
-        pc_ = static_cast<std::uint16_t>(pc_ + 2U);
+        pc_ = wrap_address(static_cast<std::uint32_t>(pc_) + 2U);
       }
     } else {
       ++unsupported_opcodes_;
@@ -262,27 +276,28 @@ void Emulator::execute(std::uint16_t opcode) {
       sound_timer_ = v_[x];
       break;
     case 0x1E:
-      i_ = static_cast<std::uint16_t>(i_ + v_[x]);
+      i_ = wrap_address(static_cast<std::uint32_t>(i_) + static_cast<std::uint32_t>(v_[x]));
       break;
     case 0x29:
       i_ = static_cast<std::uint16_t>(kFontStart + (v_[x] & 0x0FU) * kFontGlyphBytes);
       break;
     case 0x33: {
       const std::uint8_t value = v_[x];
-      memory_[i_] = static_cast<std::uint8_t>(value / 100U);
-      memory_[static_cast<std::size_t>(i_) + 1U] = static_cast<std::uint8_t>((value / 10U) % 10U);
-      memory_[static_cast<std::size_t>(i_) + 2U] = static_cast<std::uint8_t>(value % 10U);
+      const std::uint32_t address = static_cast<std::uint32_t>(i_);
+      write_memory(address, static_cast<std::uint8_t>(value / 100U));
+      write_memory(address + 1U, static_cast<std::uint8_t>((value / 10U) % 10U));
+      write_memory(address + 2U, static_cast<std::uint8_t>(value % 10U));
       break;
     }
     case 0x55:
       // Original CHIP-8 leaves I unchanged.
       for (std::size_t index = 0; index <= x; ++index) {
-        memory_[static_cast<std::size_t>(i_) + index] = v_[index];
+        write_memory(static_cast<std::uint32_t>(i_) + static_cast<std::uint32_t>(index), v_[index]);
       }
       break;
     case 0x65:
       for (std::size_t index = 0; index <= x; ++index) {
-        v_[index] = memory_[static_cast<std::size_t>(i_) + index];
+        v_[index] = read_memory(static_cast<std::uint32_t>(i_) + static_cast<std::uint32_t>(index));
       }
       break;
     default:
@@ -358,7 +373,8 @@ void Emulator::draw_sprite(std::uint8_t origin_x, std::uint8_t origin_y, std::ui
   v_[0x0F] = 0;
 
   for (std::uint8_t row = 0; row < rows; ++row) {
-    const std::uint8_t bits = memory_[static_cast<std::size_t>(i_) + static_cast<std::size_t>(row)];
+    const std::uint8_t bits =
+        read_memory(static_cast<std::uint32_t>(i_) + static_cast<std::uint32_t>(row));
     const int py = (start_y + static_cast<int>(row)) % kDisplayHeight;
 
     for (int column = 0; column < 8; ++column) {

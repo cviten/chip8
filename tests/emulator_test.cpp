@@ -100,6 +100,27 @@ TEST_CASE("1NNN jumps and 2NNN/00EE call and return") {
   CHECK(emulator.pc() == 0x0206);
 }
 
+TEST_CASE("BNNN wraps the program counter at 12 bits") {
+  Emulator emulator;
+  load(emulator, {0x60FF, 0xBFF0});
+  emulator.step(); // V0 = 0xFF
+  emulator.step(); // PC = 0xFF0 + 0xFF = 0x10EF, wrapped to 0x0EF
+
+  CHECK(emulator.pc() == 0x00EF);
+}
+
+TEST_CASE("fetch wraps when the program counter is at the last byte") {
+  Emulator emulator;
+  load(emulator, {0x6000, 0xBFFF});
+  emulator.step(); // V0 = 0
+  emulator.step(); // PC = 0xFFF
+  CHECK(emulator.pc() == 0x0FFF);
+
+  emulator.step(); // reads 0xFFF and 0x000, then advances to 0x001
+  CHECK(emulator.pc() == 0x0001);
+  CHECK(emulator.unsupported_opcodes() == 1);
+}
+
 TEST_CASE("conditional skips advance by two bytes") {
   Emulator emulator;
   load(emulator, {0x6005, 0x3005, 0x6101, 0x6202, 0x4004});
@@ -153,6 +174,16 @@ TEST_CASE("8XY6 and 8XYE shift VX in place") {
   CHECK(emulator.v(0x0F) == 0x00);
 }
 
+TEST_CASE("FX1E wraps the index register at 12 bits") {
+  Emulator emulator;
+  load(emulator, {0xAFFF, 0x6002, 0xF01E});
+  emulator.step(); // I = 0xFFF
+  emulator.step(); // V0 = 2
+  emulator.step(); // I = 0x1001, wrapped to 0x001
+
+  CHECK(emulator.i_register() == 0x0001);
+}
+
 TEST_CASE("DXYN draws, reports collision, and erases") {
   Emulator emulator;
   // The five opcodes occupy 0x200..0x209 and set I = 0x20A. The two appended
@@ -179,6 +210,27 @@ TEST_CASE("DXYN draws, reports collision, and erases") {
   CHECK_FALSE(emulator.pixel(7, 0));
 }
 
+TEST_CASE("DXYN reads sprite rows with wrapped addresses") {
+  Emulator emulator;
+  // FX55 stores the sprite at 0xFFF and 0x000: 0x81 for row 0 and 0xFF for
+  // row 1, so the second row read has to wrap past the end of memory.
+  load(emulator, {0x6081, 0x61FF, 0xAFFF, 0xF155, 0x6000, 0x6100, 0xD012});
+  emulator.step(); // V0 = 0x81
+  emulator.step(); // V1 = 0xFF
+  emulator.step(); // I = 0xFFF
+  emulator.step(); // memory[0xFFF] = 0x81, memory[0x000] = 0xFF
+  emulator.step(); // V0 = 0
+  emulator.step(); // V1 = 0
+  emulator.step(); // draw two rows at (0, 0)
+
+  CHECK(emulator.pixel(0, 0));
+  CHECK(emulator.pixel(7, 0));
+  CHECK_FALSE(emulator.pixel(1, 0));
+  CHECK(emulator.pixel(0, 1));
+  CHECK(emulator.pixel(7, 1));
+  CHECK_FALSE(emulator.pixel(8, 1));
+}
+
 TEST_CASE("FX33 stores binary-coded decimal") {
   Emulator emulator;
   load(emulator, {0xA300, 0x60EA, 0xF033});
@@ -189,6 +241,18 @@ TEST_CASE("FX33 stores binary-coded decimal") {
   CHECK(emulator.peek(0x0300) == 0x02);
   CHECK(emulator.peek(0x0301) == 0x03);
   CHECK(emulator.peek(0x0302) == 0x04);
+}
+
+TEST_CASE("FX33 wraps writes at the top of memory") {
+  Emulator emulator;
+  load(emulator, {0xAFFF, 0x60EA, 0xF033});
+  emulator.step(); // I = 0xFFF
+  emulator.step(); // V0 = 0xEA
+  emulator.step(); // writes 2 at 0xFFF, 3 at 0x000, 4 at 0x001
+
+  CHECK(emulator.peek(0x0FFF) == 0x02);
+  CHECK(emulator.peek(0x0000) == 0x03);
+  CHECK(emulator.peek(0x0001) == 0x04);
 }
 
 TEST_CASE("FX55 and FX65 round-trip and leave I unchanged") {
@@ -205,6 +269,24 @@ TEST_CASE("FX55 and FX65 round-trip and leave I unchanged") {
   CHECK(emulator.peek(0x0301) == 0x02);
   CHECK(emulator.peek(0x0302) == 0x03);
   CHECK(emulator.i_register() == 0x0300);
+}
+
+TEST_CASE("FX55 and FX65 wrap transfers at the top of memory") {
+  Emulator emulator;
+  load(emulator, {0x6001, 0x6102, 0xAFFF, 0xF155, 0x6000, 0x6100, 0xF165});
+  emulator.step(); // V0 = 1
+  emulator.step(); // V1 = 2
+  emulator.step(); // I = 0xFFF
+  emulator.step(); // memory[0xFFF] = 1, memory[0x000] = 2
+  CHECK(emulator.peek(0x0FFF) == 0x01);
+  CHECK(emulator.peek(0x0000) == 0x02);
+
+  emulator.step(); // V0 = 0
+  emulator.step(); // V1 = 0
+  emulator.step(); // V0 = memory[0xFFF], V1 = memory[0x000]
+  CHECK(emulator.v(0) == 0x01);
+  CHECK(emulator.v(1) == 0x02);
+  CHECK(emulator.i_register() == 0x0FFF);
 }
 
 TEST_CASE("EX9E and EXA1 test the keypad") {
